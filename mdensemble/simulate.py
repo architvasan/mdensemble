@@ -27,8 +27,21 @@ def _configure_amber_implicit(
     """Helper function to configure implicit amber simulations with openmm."""
     # Configure system
     if top_file is not None:
-        pdb = None
-        top = app.AmberPrmtopFile(str(top_file))
+        if False:
+            pdb = None
+
+            import os
+            if os.path.splitext(pdb_file)[1].lower() == '.inpcrd':
+                pdb = app.AmberInpcrdFile(pdb_file)
+            
+                top = app.AmberPrmtopFile(str(top_file))#,
+                                    #periodicBoxVectors=pdb.boxVectors)
+
+            else:
+                top = app.AmberPrmtopFile(str(top_file))
+
+        
+        top = pmd.load_file(str(top_file), xyz=str(pdb_file))
         system = top.createSystem(
             nonbondedMethod=app.CutoffNonPeriodic,
             nonbondedCutoff=1.0 * u.nanometer,
@@ -37,10 +50,10 @@ def _configure_amber_implicit(
         )
     else:
         pdb = app.PDBFile(str(pdb_file))
-        top = pdb.topology
+        top = pdb
         forcefield = app.ForceField("amber14-all.xml", "implicit/gbn2.xml")
         system = forcefield.createSystem(
-            top,
+            top.topology,
             nonbondedMethod=app.CutoffNonPeriodic,
             nonbondedCutoff=1.0 * u.nanometer,
             constraints=app.HBonds,
@@ -54,10 +67,11 @@ def _configure_amber_implicit(
     )
     integrator.setConstraintTolerance(0.00001)
 
-    sim = app.Simulation(top, system, integrator, platform, platform_properties)
+    sim = app.Simulation(top.topology, system, integrator, platform, platform_properties)
 
     # Returning the pdb file object for later use to reduce I/O.
     # If a topology file is passed, the pdb variable is None.
+    pdb = None
     return sim, pdb
 
 
@@ -211,13 +225,27 @@ def configure_simulation(
         return sim
 
     # Set the positions
+    import os
+    print(os.path.splitext(pdb_file)[1].lower())
     if set_positions:
-        if pdb is None:
-            pdb = app.PDBFile(str(pdb_file))
-        if isinstance(pdb, app.PDBFile):
-            sim.context.setPositions(pdb.getPositions())
-        else:
-            sim.context.setPositions(pdb.positions)
+        if os.path.splitext(pdb_file)[1].lower() == '.pdb':
+            if pdb is None:
+                pdb = app.PDBFile(str(pdb_file))
+            if isinstance(pdb, app.PDBFile):
+                sim.context.setPositions(pdb.getPositions())
+            else:
+                sim.context.setPositions(pdb.positions)
+
+        if os.path.splitext(pdb_file)[1].lower() == '.inpcrd':
+            inpcrd=pdb
+            if inpcrd is None:
+                inpcrd = app.AmberInpcrdFile(str(pdb_file))
+            try:
+                sim.context.setPositions(inpcrd.positions)
+                print("Set positions using inpcrd")
+            except:
+                sim.context.setPositions(inpcrd.getPositions())
+            
 
     # Set velocities to temperature
     if set_velocities:
@@ -285,13 +313,16 @@ def run_simulation(
     """
 
     # Discover structure file to and copy to workdir
-    structure_file = next(input_dir.glob("*.pdb"), None)
+    structure_file = next(input_dir.glob("*.inpcrd"), None)
+    if structure_file is None:
+        structure_file = next(input_dir.glob("*.pdb"), None)
     if structure_file is None:
         structure_file = next(input_dir.glob("*.gro"), None)
     if structure_file is None:
         raise FileNotFoundError(
             f"No .pdb or .gro file found in simulation input directory: {input_dir}"
         )
+    print(structure_file)
     structure_file = copy_to_workdir(structure_file, workdir)
 
     # Discover topology file and copy to workdir
