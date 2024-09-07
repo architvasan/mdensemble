@@ -25,6 +25,80 @@ conda install -c conda-forge gcc=12.1.0 -y
 conda install -c conda-forge openmm -y
 ```
 
+To install OpenMM on Aurora:
+
+```bash
+export HTTP_PROXY=http://proxy.alcf.anl.gov:3128
+export HTTPS_PROXY=http://proxy.alcf.anl.gov:3128
+export http_proxy=http://proxy.alcf.anl.gov:3128
+export https_proxy=http://proxy.alcf.anl.gov:3128
+ 
+#Replace command with appropriate one for your shell / conda implementation
+module load frameworks/2024.1 
+ 
+conda activate mdensemble
+ 
+python -m pip install numpy==1.26.4 cython
+ 
+module load cmake
+module load swig
+ 
+conda install -c conda-forge doxygen
+ 
+export SWIG_EXECUTABLE=$(command -v swig)
+export OPENMM_CC=$(which icx)
+export OPENMM_CXX=$(which icpx)
+ 
+#MAKE SURE PATH FOR OPENCL_INC AND OPENCL_LIB IS CORRECT FOR YOUR COMPILER!
+#NOTE NOTE NOTE - SPECIFICALLY CUSTOMIZED FOR AURORA FOR 2024.1 COMPILER (module load oneapi/eng-compiler/2024.04.15.002)
+#IF YOU CHANGE SYSTEMS OR MODULES/COMPILERS, THESE PATHS NEED TO BE CHANGED
+#(IF YOU CAN HAVE A MORE ROBUST METHOD FOR HEADERS/LIBRARIES PATHS, PLEASE LEAVE A COMMENT BELOW)
+export OPENCL_BASE=$(command dirname -- "${OPENMM_CC}")
+export OPENCL_BASE=$(cd "${OPENCL_BASE}/../../../" && command pwd -P)
+export OPENCL_INC="${OPENCL_BASE}/compiler/eng-20240227/include/sycl"
+export OPENCL_LIB="${OPENCL_BASE}/compiler/eng-20240227/lib/libOpenCL.so"
+ 
+git clone https://github.com/openmm/openmm.git
+ 
+cd openmm
+ 
+#APPLY MOST CURRENT PATCH (if any) - THIS IS AN AURORA-SPECIFIC PATH
+git apply /flare/Aurora_deployment/openmm/openmm_b0eb7713_0.2.patch
+ 
+mkdir build
+ 
+cd build
+ 
+cmake ..  -DCMAKE_BUILD_TYPE=Release -DOPENMM_BUILD_OPENCL_LIB=ON -DOPENMM_BUILD_CPU_LIB=ON -DOPENMM_BUILD_PME_PLUGIN=ON  -DOPENMM_BUILD_AMOEBA_PLUGIN=ON  -DOPENMM_BUILD_PYTHON_WRAPPERS=ON -DOPENMM_BUILD_C_AND_FORTRAN_WRAPPERS=OFF -DOPENMM_BUILD_EXAMPLES=ON  -DCMAKE_C_COMPILER=${OPENMM_CC} -DCMAKE_CXX_COMPILER=${OPENMM_CXX} -DOPENCL_INCLUDE_DIR=${OPENCL_INC} -DOPENCL_LIBRARY=${OPENCL_LIB} -DSWIG_EXECUTABLE=${SWIG_EXECUTABLE} -DCMAKE_INSTALL_PREFIX="./install"
+ 
+VERBOSE=1 make -j16
+ 
+make install
+ 
+export INSPATH="${PWD}/install"
+ 
+export LD_LIBRARY_PATH="$INSPATH/lib":"$INSPATH/lib/plugins":${LD_LIBRARY_PATH}
+export CPATH="$INSPATH/include":${CPATH}
+ 
+export OPENMM_INCLUDE_PATH="$INSPATH/include"
+export OPENMM_LIB_PATH="$INSPATH/lib"
+export OPENMM_PLUGIN_DIR="$INSPATH/lib/plugins"
+ 
+cd python
+ 
+CC=icx CXX=icpx python -m pip install .
+ 
+cd $HOME
+#DONT RUN THE FOLLOWING INSTALLATION TEST FROM 'python' DIRECTORY, HENCE WE CHANGE TO A DIFFERENT DIRECTORY SUCH AS '$HOME'
+ 
+python -m openmm.testInstallation
+#MAKE SURE 'OPENCL' IS ONE OF THE REPORTED PLATFORMS - CURRENTLY USED FOR PVC
+```
+Then:
+
+`conda install -c conda-forge gcc=12.1.0 -y`
+
+
 To install `mdensemble`:
 ```console
 git clone https://github.com/braceal/mdensemble
