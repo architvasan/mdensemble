@@ -173,12 +173,29 @@ class SunspotSettings(BaseComputeSettings):
     strategy: str = "simple"
 
     def config_factory(self, run_dir: PathLike) -> Config:
-        """Create a Parsl configuration for running on Sunspot."""
-        accel_ids = [
-            f"{gid}.{tid}"
-            for gid in range(6)
-            for tid in range(2)
-        ]
+        #accel_ids = [it for it in range(24)]
+        if True:
+            accel_string=""
+            for gid in range(6):
+               for tid in range(2):
+                  accel_string += f"{gid}.{tid} {gid}.{tid} "
+            accel_ids = accel_string.split()
+            with open("/home/avasan/config_log.log", "w") as f:
+                f.write(f" Setting available accels to {accel_ids}")
+
+        if False:
+            """Create a Parsl configuration for running on Sunspot."""
+            accel_ids = [
+                f"{gid}.{tid}"
+                for gid in range(6)
+                for tid in range(2)
+            ]
+            accel_ids+=accel_ids
+            accel_ids = list(accel_ids)
+            #accel_ids.extend(accel_ids)
+            with open("/home/avasan/config_log.log", "w") as f:
+                f.write(f" Setting available accels to {accel_ids}")
+
         return Config(
             executors=[
                 HighThroughputExecutor(
@@ -186,8 +203,8 @@ class SunspotSettings(BaseComputeSettings):
                     available_accelerators=accel_ids,  # Ensures one worker per accelerator
                     cpu_affinity="block",  # Assigns cpus in sequential order
                     prefetch_capacity=0,
-                    max_workers=12,
-                    cores_per_worker=16,
+                    max_workers=24,
+                    cores_per_worker=8,
                     heartbeat_period=30,
                     heartbeat_threshold=300,
                     worker_debug=False,
@@ -211,4 +228,84 @@ class SunspotSettings(BaseComputeSettings):
             app_cache=True,
         )
 
-ComputeSettingsTypes = Union[LocalSettings, WorkstationSettings, PolarisSettings, SunspotSettings]
+class SunspotSettings_4(BaseComputeSettings):
+    """Configuration for running on Sunspot
+
+    Each GPU tasks uses a single tile"""
+
+    name: Literal["sunspot_4"] = "sunspot_4"  # type: ignore[assignment]
+    label: str = 'htex'
+    worker_init: str = ""
+
+    num_nodes: int = 1
+    """Number of nodes to request"""
+    scheduler_options: str = ""
+    account: str
+    """The account to charge compute to."""
+    queue: str
+    """Which queue to submit jobs to, will usually be prod."""
+    walltime: str
+    """Maximum job time."""
+    retries: int = 0
+    """Number of retries upon failure."""
+    cpus_per_node: int = 208
+    strategy: str = "simple"
+
+    def config_factory(self, run_dir: PathLike) -> Config:
+        #accel_ids = [it for it in range(24)]
+        if True:
+            accel_string=""
+            for gid in range(6):
+               for tid in range(2):
+                  accel_string += f"{gid}.{tid} {gid}.{tid} {gid}.{tid} {gid}.{tid} "
+            accel_ids = accel_string.split()
+            with open("/home/avasan/config_log.log", "w") as f:
+                f.write(f" Setting available accels to {accel_ids}")
+
+        if False:
+            """Create a Parsl configuration for running on Sunspot."""
+            accel_ids = [
+                f"{gid}.{tid}"
+                for gid in range(6)
+                for tid in range(2)
+            ]
+            accel_ids+=accel_ids
+            accel_ids = list(accel_ids)
+            #accel_ids.extend(accel_ids)
+            with open("/home/avasan/config_log.log", "w") as f:
+                f.write(f" Setting available accels to {accel_ids}")
+
+        return Config(
+            executors=[
+                HighThroughputExecutor(
+                    label=self.label,
+                    available_accelerators=accel_ids,  # Ensures one worker per accelerator
+                    cpu_affinity="block",  # Assigns cpus in sequential order
+                    prefetch_capacity=0,
+                    max_workers=48,
+                    cores_per_worker=4,
+                    heartbeat_period=30,
+                    heartbeat_threshold=300,
+                    worker_debug=False,
+                    provider=PBSProProvider(
+                        launcher=MpiExecLauncher(
+                            bind_cmd="--cpu-bind",
+                            overrides="--depth=208 --ppn 1"
+                        ),  # Ensures 1 manger per node and allows it to divide work among all 208 threads
+                        worker_init=self.worker_init,
+                        nodes_per_block=self.num_nodes,
+                        account=self.account,
+                        queue=self.queue,
+                        walltime=self.walltime,
+
+                    ),
+                ),
+            ],
+            run_dir=str(run_dir),
+            checkpoint_mode='task_exit',
+            retries=self.retries,
+            app_cache=True,
+        )
+
+
+ComputeSettingsTypes = Union[LocalSettings, WorkstationSettings, PolarisSettings, SunspotSettings, SunspotSettings_4]
